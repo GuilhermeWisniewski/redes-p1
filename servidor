@@ -17,9 +17,8 @@ def sair(conexao):
 def dados_recebidos(conexao, dados):
 
     # Criar o buffer
-    #conexao.buffer = b''
-    #conexao.buffer += dados
-    conexao.buffer = dados
+    conexao.buffer = b''
+    conexao.buffer += dados
 
     comandos = conexao.buffer#.split(b' ', 1)
 
@@ -54,7 +53,7 @@ def dados_recebidos(conexao, dados):
 def mensagem_ping(conexao, comando):
     mensagem_server = b':server PONG server :' + comando.split(b' ', 1)[1]
     conexao.enviar(mensagem_server)
-
+"""
 def mensagem_nick(conexao, comando):
     apelido = comando.split(b' ', 1)[1].split('\r\n')[0]
 
@@ -143,7 +142,7 @@ def mensagem_part(conexao, comando):
     conexao.canais.remove(canal)
     canal.part_membro(conexao)
 
-
+"""
 def conexao_aceita(conexao):
     print(conexao, 'nova conexão')
     conexao.registrar_recebedor(dados_recebidos)
