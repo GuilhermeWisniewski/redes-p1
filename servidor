@@ -16,13 +16,15 @@ def sair(conexao):
 
 def dados_recebidos(conexao, dados):
 
-    #verificar o buffer
-    conexao.buffer = conexao.buffer + dados
+    # Criar o buffer
+    #conexao.buffer = b''
+    #conexao.buffer += dados
+    conexao.buffer = dados
 
-    comandos = conexao.buffer.split(b'\r\n')
+    comandos = conexao.buffer#.split(b' ', 1)
 
+    """
     i = 0
-
     while i < len(comandos):
         comando = comandos[i]
         if comando == b'':
@@ -39,20 +41,18 @@ def dados_recebidos(conexao, dados):
             mensagem_part(conexao, comando)
 
         i += 1
-
     conexao.buffer = comandos[-1] if comandos[-1] else b''
+    """
+    mensagem_ping(conexao, comandos)
 
-    if comando == b'':
+    if conexao.buffer == b'':
         return sair(conexao)
 
     print(conexao, dados)
 
 
 def mensagem_ping(conexao, comando):
-    mensagem_server = b':server PONG server :'
-
-    mensagem_server += comando.split(b' ', 1)[1]
-
+    mensagem_server = b':server PONG server :' + comando.split(b' ', 1)[1]
     conexao.enviar(mensagem_server)
 
 def mensagem_nick(conexao, comando):
