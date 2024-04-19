@@ -15,7 +15,34 @@ def sair(conexao):
     conexao.fechar()
 
 def dados_recebidos(conexao, dados):
+    
+    conexao.buffer = []
+    conexao.buffer.append(dados)  # Adicionando os dados à lista de buffer
 
+    print(conexao.buffer)
+
+    comando_final = None
+    if conexao.buffer[-1] == b'\n':  
+        comando_final = b''.join(conexao.buffer)  # Concatenando todos os dados em uma única sequência de bytes
+        print(comando_final)
+
+# Verificando e processando o comando final
+    if comando_final == b'':
+        sair(conexao)
+    elif comando_final.startswith(b'PING'):
+        mensagem_ping(conexao, comando_final)
+    elif comando_final.startswith(b'NICK'):
+        mensagem_nick(conexao, comando_final)
+    elif comando_final.startswith(b'PRIVMSG'):
+        mensagem_privmsg(conexao, comando_final)
+    elif comando_final.startswith(b'JOIN'):
+        mensagem_join(conexao, comando_final)
+    elif comando_final.startswith(b'PART'):
+        mensagem_part(conexao, comando_final)
+
+
+
+    """
     # Criar o buffer
     #conexao.buffer = b''
     #conexao.buffer += dados
@@ -23,7 +50,7 @@ def dados_recebidos(conexao, dados):
 
     comandos = conexao.buffer#.split(b' ', 1)
 
-    """
+    
     i = 0
     while i < len(comandos):
         comando = comandos[i]
@@ -42,7 +69,6 @@ def dados_recebidos(conexao, dados):
 
         i += 1
     conexao.buffer = comandos[-1] if comandos[-1] else b''
-    """
     mensagem_ping(conexao, comandos)
 
     if conexao.buffer == b'':
@@ -50,7 +76,7 @@ def dados_recebidos(conexao, dados):
 
     print(conexao, dados)
 
-
+    """
 def mensagem_ping(conexao, comando):
     mensagem_server = b':server PONG server :' + comando.split(b' ', 1)[1]
     conexao.enviar(mensagem_server)
