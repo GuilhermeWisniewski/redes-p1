@@ -3,9 +3,9 @@ import asyncio
 from tcp import Servidor
 import re
 
-apelido_map = {}
-
-
+#apelido_map = {}
+#conexaopontoapelidosCadastrados = []
+apelidosCadastrados = {}
 def validar_nome(nome):
     return re.match(br'^[a-zA-Z][a-zA-Z0-9_-]*$', nome) is not None
 
@@ -14,99 +14,112 @@ def sair(conexao):
     print(conexao, 'conexão fechada')
     conexao.fechar()
 
+
 def dados_recebidos(conexao, dados):
+
+    if dados == b'':
+        return sair(conexao)
     
-    conexao.buffer = []
-    conexao.buffer.append(dados)  # Adicionando os dados à lista de buffer
+    # Concatenar os dados recebidos em cada recebimento
+    conexao.buffer += dados
 
-    print(conexao.buffer)
+    # Obs: So entra nesse while se ja tiver pelo menos 1 comando completo
+    while b'\r\n' in conexao.buffer:
+        comandoCompleto = conexao.buffer.split(b'\r\n', 1)
+        primeiroComando = comandoCompleto[0]
+        conexao.buffer = comandoCompleto[1] # Devolver o resto do comando para o buffer
 
-    comando_final = None
-    if conexao.buffer[-1] == b'\n':  
-        comando_final = b''.join(conexao.buffer)  # Concatenando todos os dados em uma única sequência de bytes
-        print(comando_final)
+        #primeiroComando += b'\r\n' # Devolver a finalizacao para o primeiro comando
+        primeiroComando = primeiroComando.split(b' ', 1)
+        tipoComando = primeiroComando[0]
+        mensagem = primeiroComando[1]
 
-# Verificando e processando o comando final
-    if comando_final == b'':
-        sair(conexao)
-    elif comando_final.startswith(b'PING'):
-        mensagem_ping(conexao, comando_final)
-    elif comando_final.startswith(b'NICK'):
-        mensagem_nick(conexao, comando_final)
-    elif comando_final.startswith(b'PRIVMSG'):
-        mensagem_privmsg(conexao, comando_final)
-    elif comando_final.startswith(b'JOIN'):
-        mensagem_join(conexao, comando_final)
-    elif comando_final.startswith(b'PART'):
-        mensagem_part(conexao, comando_final)
-
-
-
-    """
-    # Criar o buffer
-    #conexao.buffer = b''
-    #conexao.buffer += dados
-    conexao.buffer = dados
-
-    comandos = conexao.buffer#.split(b' ', 1)
-
-    
-    i = 0
-    while i < len(comandos):
-        comando = comandos[i]
-        if comando == b'':
+        # Executando o comando com base em seu tipo
+        if tipoComando == b'':
             return sair(conexao)
-        if comando.startwith(b'PING'):
-            mensagem_ping(conexao, comando)
-        if comando.startwith(b'NICK'):
-            mensagem_nick(conexao, comando)
-        if comando.startwith(b'PRIVMSG'):
+
+        elif tipoComando == (b'PING'):
+            mensagem_ping(conexao, mensagem)
+        
+        elif tipoComando == (b'NICK'):
+            mensagem_nick(conexao, mensagem)
+        """
+        elif comando.startwith(b'PRIVMSG'):
             mensagem_privmsg(conexao, comando)
-        if comando.startwith(b'JOIN'):
+
+        elif comando.startwith(b'JOIN'):
             mensagem_join(conexao, comando)
-        if comando.startwith(b'PART'):
+
+        elif comando.startwith(b'PART'):
             mensagem_part(conexao, comando)
-
-        i += 1
-    conexao.buffer = comandos[-1] if comandos[-1] else b''
-    mensagem_ping(conexao, comandos)
-
-    if conexao.buffer == b'':
+        """
+    if dados == b'':
         return sair(conexao)
 
     print(conexao, dados)
+    
 
-    """
-def mensagem_ping(conexao, comando):
-    mensagem_server = b':server PONG server :' + comando.split(b' ', 1)[1]
+def conexao_aceita(conexao):
+    print(conexao, 'nova conexão')
+    conexao.registrar_recebedor(dados_recebidos)
+
+    # Criando os atributos vazios do objeto conexao
+    conexao.buffer = b''
+    conexao.apelidoAtual = b'*'
+    # Obs: talves esse "apelidosCadastrados" vai precisar ser global para ele manter
+    #      os dados salvos mesmo quando abrir e fechar a conexao (a conexao eh aberta e
+    #      fechada em cada um dos 10 teste)
+    #conexao.apelidosCadastrados = {} MUDAR AQUI DPS----------------------------------------------
+
+
+def mensagem_ping(conexao, mensagem):
+    mensagem_server = (b':server PONG server :' + mensagem + b'\r\n')
     conexao.enviar(mensagem_server)
 
-def mensagem_nick(conexao, comando):
-    apelido = comando.split(b' ', 1)[1].split('\r\n')[0]
-
-    # Verifica se o nome existe no apelido_map
-    if apelido.lower() in apelido_map:
-        mensagem_server = b':server 433 ' + conexao.apelido + b' ' + apelido + b' :Nickname is already in use' + b'\r\n'
-        conexao.enviar(mensagem_server)
-        return
+def mensagem_nick(conexao, apelidoDesejado):
+    # Verificando se o apelido desejado esta dentro dos conformes
+    if apelidoDesejado.lower() in apelidosCadastrados:  # apelido ja esta sendo usado?
+        apelidoEhRepetido = True
+    else: 
+        apelidoEhRepetido = False
     
-    if (conexao.apelido == b'*'):
-        if validar_nome(apelido):
-            apelido_map[apelido.lower] = conexao
-            conexao.apelido = apelido
+    if apelidoEhRepetido:
+            #mensagem_server = b':server 433 * ' + apelidoDesejado + b' :Nickname is already in use' + b'\r\n'
+            mensagem_server = b':server 433 ' + conexao.apelidoAtual + b' ' + apelidoDesejado + b' :Nickname is already in use' + b'\r\n'
+            conexao.enviar(mensagem_server)
+            return
 
-            mensagem_server = b':server 001 ' + apelido + b' :Welcome' + b'\r\n'
+    apelidoFoiValidado = validar_nome(apelidoDesejado) # caracteres do apelido estao ok?
+    # Se o usuario vai logar na primeira vez
+    if (conexao.apelidoAtual == b'*'):
+        if apelidoFoiValidado: # Se o primeiro apelido estiver dentro dos conformes
+            conexao.apelidoAtual = apelidoDesejado
+            #apelidosCadastrados.append(apelidoDesejado)
+            apelidosCadastrados[apelidoDesejado.lower()] = conexao
+            mensagem_server = b':server 001 ' + apelidoDesejado + b' :Welcome' + b'\r\n'
             conexao.enviar(mensagem_server)
 
-            mensagem_server = b':server 422 ' + apelido + b' :MOTD File is missing' + b'\r\n'
+            mensagem_server = b':server 422 ' + apelidoDesejado + b' :MOTD File is missing' + b'\r\n'
             conexao.enviar(mensagem_server)
             
-
-        else:
-            mensagem_server = b':server 432 ' + b'* ' + apelido + b' :Erroneous nickname' + b'\r\n'
+        else: # Se o primeiro apelido tiver alguma irregularidade
+            mensagem_server = b':server 432 ' + conexao.apelidoAtual + b' ' + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
+            #mensagem_server = b':server 432 * '  + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
             conexao.enviar(mensagem_server)
 
+    else: # Se for mudar de apelido
+        if apelidoFoiValidado: # Se o novo apelido estiver sem irregularidades
+            mensagem_server = b':' + conexao.apelidoAtual + b' NICK ' + apelidoDesejado + b'\r\n'
+            apelidosCadastrados[apelidoDesejado.lower()] = conexao    
+            del apelidosCadastrados[conexao.apelidoAtual.lower()]
+            conexao.apelidoAtual = apelidoDesejado
+            conexao.enviar(mensagem_server)
+            
+        else: # Se o novo apelido tiver alguma irregularidade
+            mensagem_server = b':server 432 ' + b'* ' + conexao.apelidoAtual + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
+            conexao.enviar(mensagem_server)
 
+"""
 def mensagem_privmsg(conexao, comando):
     # Dividindo os dados recebidos
     _, destinatario, conteudo = comando.strip(b'\r\n').split(b' ', 2)
@@ -168,14 +181,7 @@ def mensagem_part(conexao, comando):
 
     conexao.canais.remove(canal)
     canal.part_membro(conexao)
-
-
-def conexao_aceita(conexao):
-    print(conexao, 'nova conexão')
-    conexao.registrar_recebedor(dados_recebidos)
-
-
-
+"""
 
 servidor = Servidor(6667)
 servidor.registrar_monitor_de_conexoes_aceitas(conexao_aceita)
