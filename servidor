@@ -51,7 +51,7 @@ def dados_recebidos(conexao, dados):
             mensagem_join(conexao, mensagem)
         
         elif tipoComando == (b'PART'):
-            print("ENTROU AQUI----------------------------------")
+            #print("ENTROU AQUI----------------------------------")
             mensagem_part(conexao, mensagem)
         
     if dados == b'':
@@ -177,10 +177,14 @@ def mensagem_part(conexao, mensagem):
     print("PEDIU PRA SAIR:" + str(conexao.apelidoAtual))
     print("Mensagem:" + str(mensagem))
     
-    canal = mensagem.strip(b'\r\n')
+    #canal = mensagem.strip(b':')
+    teste = mensagem.split(b':')[0]
+    teste = mensagem.split(b' ')[0]
+    canal = teste
+    print(teste)
     apelido_membro_saida = conexao.apelidoAtual
-    
     if canal in canais:
+        print("ENCONTROU O CANAL")
         print(canais[canal])
         for apelido_membro in canais[canal]:
             if apelido_membro in apelidosCadastrados:  # Verifica se o apelido está cadastrado
@@ -189,6 +193,7 @@ def mensagem_part(conexao, mensagem):
                 print("MENSAGEM ENVIADA" + str(mensagem_server))
                 membro.enviar(mensagem_server)
     else:
+        print("NÃO ENCONTROU O CANAL")
         mensagem_server = b':server 403 ' + canal + b' :No such channel' + b'\r\n'
         conexao.enviar(mensagem_server)
         return
