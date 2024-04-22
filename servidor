@@ -177,20 +177,39 @@ def mensagem_part(conexao, mensagem):
     print("PEDIU PRA SAIR:" + str(conexao.apelidoAtual))
     print("Mensagem:" + str(mensagem))
     
-    canal = mensagem
+    canal = mensagem.strip(b'\r\n')
+    apelido_membro_saida = conexao.apelidoAtual
+    
+    if canal in canais:
+        print(canais[canal])
+        for apelido_membro in canais[canal]:
+            if apelido_membro in apelidosCadastrados:  # Verifica se o apelido está cadastrado
+                membro = apelidosCadastrados[apelido_membro]  # Obtém o objeto de conexão
+                mensagem_server = b':' + apelido_membro_saida + b' PART ' + canal + b'\r\n'
+                print("MENSAGEM ENVIADA" + str(mensagem_server))
+                membro.enviar(mensagem_server)
+    else:
+        mensagem_server = b':server 403 ' + canal + b' :No such channel' + b'\r\n'
+        conexao.enviar(mensagem_server)
+        return
+
+    """print("PEDIU PRA SAIR:" + str(conexao.apelidoAtual))
+    print("Mensagem:" + str(mensagem))
+    
+    canal = mensagem.strip(b'\r\n')
     apelido_membro_saida = conexao.apelidoAtual
     
     if canal in canais:
         print(canais[canal])
         for membro in canais[canal]:
             mensagem_server = b':' + apelido_membro_saida + b' PART ' + canal + b'\r\n'
-            print("MENSAGEM ENVIADA")
+            print("MENSAGEM ENVIADA" + str(mensagem_server))
             membro.enviar(mensagem_server)
     else:
         mensagem_server = b':server 403 ' + canal + b' :No such channel' + b'\r\n'
         conexao.enviar(mensagem_server)
         return
-    
+    """
 """
 
 def mensagem_part(conexao, comando):
