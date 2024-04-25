@@ -3,16 +3,32 @@ import asyncio
 from tcp import Servidor
 import re
 
-#apelido_map = {}
-#conexao.apelidosCadastrados = []
-
+apelidosCadastrados = {}
+canais = {}
 def validar_nome(nome):
     return re.match(br'^[a-zA-Z][a-zA-Z0-9_-]*$', nome) is not None
 
 
 def sair(conexao):
     print(conexao, 'conexão fechada')
+
+    # Verificar se o apelido está cadastrado
+    if conexao.apelidoAtual.lower() not in apelidosCadastrados:
+        return
+    
+    for usuarios in canais.values():
+        if conexao.apelidoAtual.lower() in usuarios:
+            # Remove o usuario que saiu da lista de membros dos canais que ele fazia parte
+            usuarios.remove(conexao.apelidoAtual.lower())
+
+            # Mandar a mensagem para os usuarios que participavam dos mesmos canais que o usuario que saiu
+            for participantes in usuarios:
+                apelidosCadastrados[participantes].enviar(b':%s QUIT :Connection closed\r\n' % conexao.apelidoAtual)
+
+    # Retirar o apelido da lista
+    apelidosCadastrados.pop(conexao.apelidoAtual.lower())
     conexao.fechar()
+    
 
 
 def dados_recebidos(conexao, dados):
@@ -29,7 +45,6 @@ def dados_recebidos(conexao, dados):
         primeiroComando = comandoCompleto[0]
         conexao.buffer = comandoCompleto[1] # Devolver o resto do comando para o buffer
 
-        #primeiroComando += b'\r\n' # Devolver a finalizacao para o primeiro comando
         primeiroComando = primeiroComando.split(b' ', 1)
         tipoComando = primeiroComando[0]
         mensagem = primeiroComando[1]
@@ -43,16 +58,16 @@ def dados_recebidos(conexao, dados):
         
         elif tipoComando == (b'NICK'):
             mensagem_nick(conexao, mensagem)
-        """
-        elif comando.startwith(b'PRIVMSG'):
-            mensagem_privmsg(conexao, comando)
+        
+        elif tipoComando == (b'PRIVMSG'):
+            mensagem_privmsg(conexao, mensagem)
 
-        elif comando.startwith(b'JOIN'):
-            mensagem_join(conexao, comando)
-
-        elif comando.startwith(b'PART'):
-            mensagem_part(conexao, comando)
-        """
+        elif tipoComando == (b'JOIN'):
+            mensagem_join(conexao, mensagem)
+        
+        elif tipoComando == (b'PART'):
+            mensagem_part(conexao, mensagem)
+        
     if dados == b'':
         return sair(conexao)
 
@@ -66,36 +81,29 @@ def conexao_aceita(conexao):
     # Criando os atributos vazios do objeto conexao
     conexao.buffer = b''
     conexao.apelidoAtual = b'*'
-    # Obs: talves esse "apelidosCadastrados" vai precisar ser global para ele manter
-    #      os dados salvos mesmo quando abrir e fechar a conexao (a conexao eh aberta e
-    #      fechada em cada um dos 10 teste)
-    conexao.apelidosCadastrados = []
-
 
 def mensagem_ping(conexao, mensagem):
     mensagem_server = (b':server PONG server :' + mensagem + b'\r\n')
     conexao.enviar(mensagem_server)
 
 def mensagem_nick(conexao, apelidoDesejado):
-
     # Verificando se o apelido desejado esta dentro dos conformes
-    if apelidoDesejado.lower() in conexao.apelidosCadastrados:  # apelido ja esta sendo usado?
+    if apelidoDesejado.lower() in apelidosCadastrados:  # apelido ja esta sendo usado?
         apelidoEhRepetido = True
     else: 
         apelidoEhRepetido = False
     
     if apelidoEhRepetido:
-        mensagem_server = b':server 433 ' + conexao.apelidoAtual + b' ' + apelidoDesejado + b' :Nickname is already in use' + b'\r\n'
-        conexao.enviar(mensagem_server)
-        return
+            mensagem_server = b':server 433 ' + conexao.apelidoAtual + b' ' + apelidoDesejado + b' :Nickname is already in use' + b'\r\n'
+            conexao.enviar(mensagem_server)
+            return
 
     apelidoFoiValidado = validar_nome(apelidoDesejado) # caracteres do apelido estao ok?
     # Se o usuario vai logar na primeira vez
     if (conexao.apelidoAtual == b'*'):
         if apelidoFoiValidado: # Se o primeiro apelido estiver dentro dos conformes
             conexao.apelidoAtual = apelidoDesejado
-            conexao.apelidosCadastrados.append(apelidoDesejado)
-
+            apelidosCadastrados[apelidoDesejado.lower()] = conexao
             mensagem_server = b':server 001 ' + apelidoDesejado + b' :Welcome' + b'\r\n'
             conexao.enviar(mensagem_server)
 
@@ -103,83 +111,101 @@ def mensagem_nick(conexao, apelidoDesejado):
             conexao.enviar(mensagem_server)
             
         else: # Se o primeiro apelido tiver alguma irregularidade
-            mensagem_server = b':server 432 * '  + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
+            mensagem_server = b':server 432 ' + conexao.apelidoAtual + b' ' + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
             conexao.enviar(mensagem_server)
 
     else: # Se for mudar de apelido
         if apelidoFoiValidado: # Se o novo apelido estiver sem irregularidades
-            mensagem_server = conexao.apelidoAtual + b' NICK ' + apelidoDesejado
-            conexao.apelidosCadastrados.append(apelidoDesejado)
-            conexao.apelidosCadastrados.remove(conexao.apelidoAtual)
+            mensagem_server = b':' + conexao.apelidoAtual + b' NICK ' + apelidoDesejado + b'\r\n'
+            apelidosCadastrados[apelidoDesejado.lower()] = conexao    
+            del apelidosCadastrados[conexao.apelidoAtual.lower()]
             conexao.apelidoAtual = apelidoDesejado
+            conexao.enviar(mensagem_server)
             
         else: # Se o novo apelido tiver alguma irregularidade
-            mensagem_server = b':server 432 ' + b'* ' + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
+            mensagem_server = b':server 432 ' + b'* ' + conexao.apelidoAtual + apelidoDesejado + b' :Erroneous nickname' + b'\r\n'
             conexao.enviar(mensagem_server)
 
-"""
-def mensagem_privmsg(conexao, comando):
+def mensagem_privmsg(conexao, mensagem):
     # Dividindo os dados recebidos
-    _, destinatario, conteudo = comando.strip(b'\r\n').split(b' ', 2)
+    destinatario, conteudo = mensagem.strip(b'\r\n').split(b' ', 2)
     conteudo = conteudo[1:]
 
-    # Verificando se o destinatário está mapeado
-    if destinatario.lower() not in apelido_map:
-        return
+    if destinatario.startswith(b'#'): # Se for mensagem para um canal
+        if destinatario.lower() in canais:
+            for usuario in canais[destinatario.lower()]:
+                if conexao.apelidoAtual != usuario:
+                    apelidosCadastrados[usuario].enviar(b':%s PRIVMSG %s :%s\r\n' % (conexao.apelidoAtual, destinatario, conteudo))
 
-    # Obtendo a conexão de destino com base no apelido
-    conexao_destino = apelido_map[destinatario.lower()]
+    else: # Se for mensagem para uma pessoa
+        # Verificando se o destinatário esta mapeado
+        if destinatario.lower() not in apelidosCadastrados:
+            return
 
-    # Criando a mensagem para enviar ao servidor
-    mensagem_server = b':' + conexao.apelido + b' PRIVMSG ' + destinatario + b' :' + conteudo + b'\r\n'
-    conexao_destino.enviar(mensagem_server)
+        # Obtendo a conexão de destino com base no apelido
+        conexao_destino = apelidosCadastrados[destinatario.lower()]
 
+        # enviando a mensagem
+        conexao_destino.enviar(b':' + conexao.apelidoAtual + b' PRIVMSG ' + destinatario + b' :' + conteudo + b'\r\n')
 
-
-def mensagem_join(conexao, comando):
+def mensagem_join(conexao, mensagem):
     # Recortando os dados recebidos
-    _, nome_canal = comando.strip(b'\r\n').split(b' ', 1)
+    canal = mensagem
 
     # Verificando se o canal tem um nome válido
-    if nome_canal[0] != b'#' and not validar_nome(nome_canal[1:]):
-        mensagem_server = b':server 403 ' + nome_canal + b' :No such channel' + b'\r\n'
+
+    if canal.startswith(b'#') and validar_nome(canal[1:]):
+        canal_key = canal.lower()
+        apelido_key = conexao.apelidoAtual.lower()
+        
+        if canal_key not in canais:
+            canais[canal_key] = [apelido_key]
+        else:
+            canais[canal_key].append(apelido_key)
+        
+        for usuario in canais[canal_key]:
+            apelidosCadastrados[usuario].enviar(b':%s JOIN :%s\r\n' % (conexao.apelidoAtual, canal))
+        
+        mensagem_server =  b':server 353 %s = %s :' % (conexao.apelidoAtual, canal)
+        mensagem_comp = mensagem_server
+        lista_usuarios = sorted(canais[canal.lower()])
+
+        for usuario in lista_usuarios:
+            if len(mensagem_comp + usuario) >= 511:
+                mensagem_comp = mensagem_server
+                conexao.enviar(mensagem_comp[:-1]+b'\r\n')
+            mensagem_comp += usuario + b' '
+        
+        if mensagem_server != mensagem_comp:
+            conexao.enviar(mensagem_comp[:-1]+b'\r\n')
+        conexao.enviar(b':server 366 %s %s :End of /NAMES list.\r\n' % (conexao.apelidoAtual, canal))
+
+    else:
+        mensagem_server = b':server 403 ' + canal + b' :No such channel' + b'\r\n'
         conexao.enviar(mensagem_server)
         return
 
-    # Criando ou recuperando o canal desejado
-    if nome_canal.lower() not in apelido_map:
-        canal = Canal(nome_canal)
-        apelido_map[ nome_canal.lower() ] = canal
+
+def mensagem_part(conexao, mensagem):
+    teste = mensagem.split(b':')[0]
+    teste = mensagem.split(b' ')[0]
+    canal = teste
+
+    apelido_membro_saida = conexao.apelidoAtual
+    if canal in canais:
+        for apelido_membro in canais[canal]:
+            if apelido_membro in apelidosCadastrados:  # Verifica se o apelido está cadastrado
+                membro = apelidosCadastrados[apelido_membro]  # Obtém o objeto de conexão
+                mensagem_server = b':' + apelido_membro_saida + b' PART ' + canal + b'\r\n'
+                membro.enviar(mensagem_server)
+            
+        canais[canal].remove(apelido_membro_saida)
+
     else:
-        canal = apelido_map[ nome_canal.lower() ]
-
-    conexao.canais.append(canal)
-    canal.join_membro(conexao)
-
-def mensagem_part(conexao, comando):
-    # Recortando os dados recebidos
-    _, nome_canal = dados.strip(b'\r\n').split(b' ', 1)
-
-    # Ignorando informações que vierem depois do nome do canal
-    if nome_canal.find(b' ') != -1:
-        nome_canal, _ = nome_canal.split(b' ', 1)
-
-    # Verificando se o canal tem um nome válido
-    if nome_canal[0] != b'#' and not validar_nome(nome_canal[1:]):
-        mensagem_server = b':server 403 ' + nome_canal + b' :No such channel' + b'\r\n'
+        mensagem_server = b':server 403 ' + canal + b' :No such channel' + b'\r\n'
         conexao.enviar(mensagem_server)
         return
 
-    # Recuperando o canal desejado
-    if nome_canal.lower() not in apelido_map:
-        canal = Canal(nome_canal)
-        apelido_map[ nome_canal.lower() ] = canal
-    else:
-        canal = apelido_map[ nome_canal.lower() ]
-
-    conexao.canais.remove(canal)
-    canal.part_membro(conexao)
-"""
 
 servidor = Servidor(6667)
 servidor.registrar_monitor_de_conexoes_aceitas(conexao_aceita)
